@@ -16,20 +16,21 @@ let globals = {
 }
 
 const utils = {
-  formatExerciseLog(log) {
-    // format returned documents for an exercise log object
-    let outArr = []
-    for (const entry of log) {
-      let outEntr = {
-        ...entry._doc
-      }
-      delete outEntr._id
-      delete outEntr.__v
-      outEntr.date = outEntr.date.toISOString().split("T")[0]
-      outArr.push(outEntr)
-    }
-    return outArr
-  }
+	formatExerciseLog(log) {
+		// format returned documents for an exercise log object
+		let outArr = []
+		for (const entry of log) {
+			let outEntr = {
+				...entry._doc,
+			}
+			delete outEntr._id
+			delete outEntr.__v
+			// outEntr.date = outEntr.date.toISOString().split("T")[0]
+			outEntr.date = outEntr.date.toDateString()
+			outArr.push(outEntr)
+		}
+		return outArr
+	},
 }
 
 async function defineSchemas() {
@@ -91,23 +92,29 @@ async function init() {
 				console.log(user.username, req.params._id)
 				if (user) {
 					// user found, get list of all exercises in the fCC format
-          const now = new Date()
-          const filters = {
-            from: req.query.from || "1800-01-01",
-            to: req.query.to || now.toISOString().split("T")[0],
-            limit: req.query.limit || 30,
-          }
-          console.log(filters)
-          // select items per criteria
-          const [err, exercises] = await sprom(globals.models.exercises.find({username: user.username, date: { $gte: filters.from, $lte: filters.to } }).limit(filters.limit).sort({ date: -1 }).select("description duration date").exec())
-          if (err) {
-            res.status(500).json({ error: "Error fetching exercises" })
-            console.error(err)
-          } else {
-            // res.json({username: user.username, count: exercises.length, _id: user._id, log: utils.formatExerciseLog(exercises)})
-            res.json({username: user.username, count: await globals.models.exercises.countDocuments({username: user.username}), _id: user._id, log: utils.formatExerciseLog(exercises)})
-          }
-          
+					const now = new Date()
+					const filters = {
+						from: req.query.from || "1800-01-01",
+						to: req.query.to || now.toISOString().split("T")[0],
+						limit: req.query.limit || 0,
+					}
+					console.log(filters)
+					// select items per criteria
+					const [err, exercises] = await sprom(
+						globals.models.exercises
+							.find({ username: user.username, date: { $gte: filters.from, $lte: filters.to } })
+							.limit(filters.limit)
+							.sort({ date: -1 })
+							.select("description duration date")
+							.exec()
+					)
+					if (err) {
+						res.status(500).json({ error: "Error fetching exercises" })
+						console.error(err)
+					} else {
+						// res.json({username: user.username, count: exercises.length, _id: user._id, log: utils.formatExerciseLog(exercises)})
+						res.json({ username: user.username, count: await globals.models.exercises.countDocuments({ username: user.username }), _id: user._id, log: utils.formatExerciseLog(exercises) })
+					}
 				} else {
 					// user not found
 					res.status(400).json({ error: "User not found" })
@@ -115,6 +122,22 @@ async function init() {
 			}
 		} else {
 			res.status(400).json({ error: "Malformed request" })
+		}
+	})
+
+	app.get("/api/users", bodyParser.urlencoded({ extended: false }), async (req, res) => {
+		// list all users
+		const [err, users] = await sprom(
+			globals.models.users
+				.find()
+				.exec()
+		)
+		if (err) {
+			res.status(500).json({ error: "Error fetching users" })
+			console.error(err)
+		} else {
+			// res.json({username: user.username, count: exercises.length, _id: user._id, log: utils.formatExerciseLog(exercises)})
+			res.json(users)
 		}
 	})
 
