@@ -92,7 +92,8 @@ async function init() {
 				console.log(user.username, req.params._id)
 				if (user) {
 					// user found, get list of all exercises in the fCC format
-					const now = new Date()
+					let now = new Date()
+					now.setDate(now.getDate() + 1)
 					const filters = {
 						from: req.query.from || "1800-01-01",
 						to: req.query.to || now.toISOString().split("T")[0],
@@ -102,19 +103,23 @@ async function init() {
 					// select items per criteria
 					const [err, exercises] = await sprom(
 						globals.models.exercises
-							.find({ username: user.username, date: { $gte: filters.from, $lte: filters.to } })
+							.find({ username: user.username, date: { $gte: new Date(filters.from), $lte: new Date(filters.to) } })
+							// .find({ username: user.username })
 							.limit(filters.limit)
 							.select("description duration date")
 							.exec()
-              // .sort({ date: -1 })
+						// .sort({ date: -1 })
 					)
 					if (err) {
 						res.status(500).json({ error: "Error fetching exercises" })
 						console.error(err)
 					} else {
 						// res.json({_id: user._id, username: user.username, count: exercises.length, log: utils.formatExerciseLog(exercises)})
-						res.json({...user._doc, log: utils.formatExerciseLog(exercises)})
-						// res.json({  _id: user._id, username: user.username, count: await globals.models.exercises.countDocuments({ username: user.username }), log: utils.formatExerciseLog(exercises) })
+						// console.log("Responding with")
+						// console.log({ _id: req.params._id, username: user.username, count: await globals.models.exercises.countDocuments({ username: user.username }), log: utils.formatExerciseLog(exercises) })
+
+						// res.json({...user._doc, log: utils.formatExerciseLog(exercises)})
+						res.json({ _id: req.params._id, username: user.username, count: await globals.models.exercises.countDocuments({ username: user.username }), log: utils.formatExerciseLog(exercises) })
 					}
 				} else {
 					// user not found
@@ -128,11 +133,7 @@ async function init() {
 
 	app.get("/api/users", bodyParser.urlencoded({ extended: false }), async (req, res) => {
 		// list all users
-		const [err, users] = await sprom(
-			globals.models.users
-				.find()
-				.exec()
-		)
+		const [err, users] = await sprom(globals.models.users.find().exec())
 		if (err) {
 			res.status(500).json({ error: "Error fetching users" })
 			console.error(err)
@@ -174,31 +175,30 @@ async function init() {
 						// input is valid
 						const outObj = {
 							username: user.username,
-              date: req.body.date ? new Date(req.body.date).toDateString() : new Date().toDateString(),
+							date: req.body.date ? new Date(req.body.date) : new Date(),
 							duration: parseInt(req.body.duration),
-              description: req.body.description,
+							description: req.body.description,
 						}
 						let exercise = new globals.models.exercises(outObj)
 						;[err, done] = await sprom(exercise.save())
 						if (err) {
-              console.log({ error: "Error saving exercise..." })
+							console.log({ error: "Error saving exercise..." })
 							res.status(500).json({ error: "Error saving exercise..." })
 							console.error(err)
 						} else {
-              console.log("Responding with")
-              // console.log({ _id: req.params._id, ...outObj })
-              console.log({ _id: exercise._doc._id, ...outObj })
-
-							// res.json({ _id: req.params._id, ...outObj })
-							res.json({ _id: exercise._doc._id, ...outObj })
+							let response = { ...exercise._doc, ...user._doc }
+							delete response.__v
+							response._id = response._id.toString()
+							response.date = response.date.toDateString()
+							res.json(response)
 						}
 					} else {
-            console.log({ error: "User not found 1" })
+						console.log({ error: "User not found 1" })
 						res.status(400).json({ error: "Malformed request" })
 					}
 				} else {
 					// user not found
-          console.log({ error: "User not found 2" })
+					console.log({ error: "User not found 2" })
 					res.status(400).json({ error: "User not found" })
 				}
 			}
