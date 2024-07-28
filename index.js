@@ -15,6 +15,23 @@ let globals = {
 	models: {},
 }
 
+const utils = {
+  formatExerciseLog(log) {
+    // format returned documents for an exercise log object
+    let outArr = []
+    for (const entry of log) {
+      let outEntr = {
+        ...entry._doc
+      }
+      delete outEntr._id
+      delete outEntr.__v
+      outEntr.date = outEntr.date.toISOString().split("T")[0]
+      outArr.push(outEntr)
+    }
+    return outArr
+  }
+}
+
 async function defineSchemas() {
 	// users
 	globals.schemas["users"] = new mongoose.Schema({
@@ -40,7 +57,7 @@ async function defineSchemas() {
 			required: true,
 		},
 		date: {
-			type: String,
+			type: Date,
 			required: true,
 		},
 	})
@@ -60,10 +77,45 @@ async function init() {
 		res.sendFile(__dirname + "/views/index.html")
 	})
 
-	app.get("/api/users/:_id/logs", (req, res) => {
+	app.get("/api/users/:_id/logs", async (req, res) => {
 		// retrieve user's exercise log
 		// must support queries from, to = dates (yyyy-mm-dd); limit = number
-		res.sendFile(__dirname + "/views/index.html")
+		if (req.params && req.params._id && typeof req.params._id == "string") {
+			// id is valid, locate user it belongs to
+			// let [err, user] = await sprom(globals.models.exercises.find({ _id: new mongoose.Types.ObjectId(req.params._id) }))
+			let [err, user] = await sprom(globals.models.users.findById(req.params._id))
+			if (err) {
+				res.status(500).json({ error: "Error searching for user" })
+				console.error(err)
+			} else {
+				console.log(user.username, req.params._id)
+				if (user) {
+					// user found, get list of all exercises in the fCC format
+          const now = new Date()
+          const filters = {
+            from: req.query.from || "1800-01-01",
+            to: req.query.to || now.toISOString().split("T")[0],
+            limit: req.query.limit || 30,
+          }
+          console.log(filters)
+          // select items per criteria
+          const [err, exercises] = await sprom(globals.models.exercises.find({username: user.username, date: { $gte: filters.from, $lte: filters.to } }).limit(filters.limit).sort({ date: -1 }).select("description duration date").exec())
+          if (err) {
+            res.status(500).json({ error: "Error fetching exercises" })
+            console.error(err)
+          } else {
+            // res.json({username: user.username, count: exercises.length, _id: user._id, log: utils.formatExerciseLog(exercises)})
+            res.json({username: user.username, count: await globals.models.exercises.countDocuments({username: user.username}), _id: user._id, log: utils.formatExerciseLog(exercises)})
+          }
+          
+				} else {
+					// user not found
+					res.status(400).json({ error: "User not found" })
+				}
+			}
+		} else {
+			res.status(400).json({ error: "Malformed request" })
+		}
 	})
 
 	app.post("/api/users", bodyParser.urlencoded({ extended: false }), async (req, res) => {
