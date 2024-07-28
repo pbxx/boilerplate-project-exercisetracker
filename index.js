@@ -96,7 +96,7 @@ async function init() {
 					const filters = {
 						from: req.query.from || "1800-01-01",
 						to: req.query.to || now.toISOString().split("T")[0],
-						limit: req.query.limit || 0,
+						limit: parseInt(req.query.limit) || 0,
 					}
 					console.log(filters)
 					// select items per criteria
@@ -104,16 +104,17 @@ async function init() {
 						globals.models.exercises
 							.find({ username: user.username, date: { $gte: filters.from, $lte: filters.to } })
 							.limit(filters.limit)
-							.sort({ date: -1 })
 							.select("description duration date")
 							.exec()
+              // .sort({ date: -1 })
 					)
 					if (err) {
 						res.status(500).json({ error: "Error fetching exercises" })
 						console.error(err)
 					} else {
-						// res.json({username: user.username, count: exercises.length, _id: user._id, log: utils.formatExerciseLog(exercises)})
-						res.json({ username: user.username, count: await globals.models.exercises.countDocuments({ username: user.username }), _id: user._id, log: utils.formatExerciseLog(exercises) })
+						// res.json({_id: user._id, username: user.username, count: exercises.length, log: utils.formatExerciseLog(exercises)})
+						res.json({...user._doc, log: utils.formatExerciseLog(exercises)})
+						// res.json({  _id: user._id, username: user.username, count: await globals.models.exercises.countDocuments({ username: user.username }), log: utils.formatExerciseLog(exercises) })
 					}
 				} else {
 					// user not found
@@ -173,23 +174,31 @@ async function init() {
 						// input is valid
 						const outObj = {
 							username: user.username,
-							description: req.body.description,
+              date: req.body.date ? new Date(req.body.date).toDateString() : new Date().toDateString(),
 							duration: parseInt(req.body.duration),
-							date: req.body.date ? new Date(req.body.date).toDateString() : new Date().toDateString(),
+              description: req.body.description,
 						}
 						let exercise = new globals.models.exercises(outObj)
-						;[err, exercise] = await sprom(exercise.save())
+						;[err, done] = await sprom(exercise.save())
 						if (err) {
+              console.log({ error: "Error saving exercise..." })
 							res.status(500).json({ error: "Error saving exercise..." })
 							console.error(err)
 						} else {
-							res.json({ _id: req.params._id, username: user.username, date: outObj.date, duration: outObj.duration, description: outObj.description })
+              console.log("Responding with")
+              // console.log({ _id: req.params._id, ...outObj })
+              console.log({ _id: exercise._doc._id, ...outObj })
+
+							// res.json({ _id: req.params._id, ...outObj })
+							res.json({ _id: exercise._doc._id, ...outObj })
 						}
 					} else {
+            console.log({ error: "User not found 1" })
 						res.status(400).json({ error: "Malformed request" })
 					}
 				} else {
 					// user not found
+          console.log({ error: "User not found 2" })
 					res.status(400).json({ error: "User not found" })
 				}
 			}
